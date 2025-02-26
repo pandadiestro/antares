@@ -1,7 +1,7 @@
 
 <div align="center">
 
-<img src="./docs/media/icon+text.png" />
+<img alt="antares's icon" src="./docs/media/icon+text.png" />
 
 *An Atari 2600 (MOS 6507) emulator/runtime.*
 
@@ -13,4 +13,10 @@
 zig build -Doptimize=ReleaseSafe
 ```
 
+## ToDo
+
+- Implement decimal mode operations on SBC and ADC
+- Implement [expected hardware
+  bugs](https://atariwiki.org/wiki/Wiki.jsp?page=6502%20bugs) from the 6502
+  family (at least those that are necessary)
 
