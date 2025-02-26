@@ -706,8 +706,9 @@ fn execRTS(ctx: *Context, memory: []u8) void {
 
 fn execSBC(ctx: *Context, memory: []u8, arg: ExecArg, addr_mode: op.ADDRMode) void {
     const mem_idx = resolveArg(ctx, memory, arg, addr_mode);
+    const mem_value = memory[mem_idx];
     const accum = ctx.REG.A;
-    const result = @subWithOverflow(accum, mem_idx);
+    const result = @subWithOverflow(accum, mem_value);
     const new_accum = result[0];
 
     ctx.REG.A = new_accum - @as(u8, @intCast(~ctx.STATUS.carry));
