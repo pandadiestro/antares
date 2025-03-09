@@ -17,6 +17,67 @@ const start_vector_addr = 0xfffc;
 /// BRK instruction
 const interrupt_vector_addr = 0xfffe;
 
+
+/// Binary Decimal representation for operations under BCD mode (ADC and SBC)
+/// http://6502.org/tutorials/decimal_mode.html#4
+const BCDnum = packed struct {
+    upper: u4,
+    lower: u4,
+};
+
+fn bcdSumWithOverflow(base: BCDnum, opperand: BCDnum) struct { u8, u1 } {
+    var base_dec = @as(u8, @intCast(base.upper)) * 10 + @as(u8, @intCast(base.lower));
+    var opperand_dec = @as(u8, @intCast(opperand.upper)) * 10 + @as(u8, @intCast(opperand.lower));
+
+    if (base_dec > 99) base_dec = 99;
+    if (opperand_dec > 99) opperand_dec = 99;
+
+    base_dec += opperand_dec;
+
+    var overflow_bit: u1 = 0;
+    if (base_dec > 99) {
+        overflow_bit = 1;
+        base_dec -= 99;
+    }
+
+    const new_bcd = BCDnum{
+        .lower = @truncate(base_dec - ((base_dec / 10) * 10)),
+        .upper = @truncate(base_dec / 10),
+    };
+
+    return .{
+        @bitCast(new_bcd),
+        overflow_bit,
+    };
+}
+
+fn bcdSubWithOverflow(base: BCDnum, opperand: BCDnum) struct { u8, u1 } {
+    var base_dec = @as(u8, @intCast(base.upper)) * 10 + @as(u8, @intCast(base.lower));
+    var opperand_dec = @as(u8, @intCast(opperand.upper)) * 10 + @as(u8, @intCast(opperand.lower));
+
+    if (base_dec > 99) base_dec = 99;
+    if (opperand_dec > 99) opperand_dec = 99;
+
+    var overflow_bit: u1 = 0;
+    if (opperand_dec > base_dec) {
+        overflow_bit = 1;
+        base_dec = 100;
+        opperand_dec -= base_dec;
+    }
+
+    base_dec -= opperand_dec;
+
+    const new_bcd = BCDnum{
+        .lower = @truncate(base_dec - ((base_dec / 10) * 10)),
+        .upper = @truncate(base_dec / 10),
+    };
+
+    return .{
+        @bitCast(new_bcd),
+        overflow_bit,
+    };
+}
+
 const Context = struct {
     SP: u8 = 0,
 
@@ -144,7 +205,11 @@ fn execADC(ctx: *Context, memory: []u8, arg: ExecArg, addr_mode: op.ADDRMode) vo
     const acum = ctx.REG.A;
     const additive_ptr = resolveArg(ctx, memory, arg, addr_mode);
     const additive = memory[additive_ptr];
-    const add_result = @addWithOverflow(acum, additive);
+
+    const add_result: struct{ u8, u1 } = switch (ctx.STATUS.decimal_mode) {
+        1 => bcdSumWithOverflow(@bitCast(acum), @bitCast(additive)),
+        0 => @addWithOverflow(acum, additive),
+    };
 
     ctx.REG.A = add_result[0];
 
@@ -708,7 +773,12 @@ fn execSBC(ctx: *Context, memory: []u8, arg: ExecArg, addr_mode: op.ADDRMode) vo
     const mem_idx = resolveArg(ctx, memory, arg, addr_mode);
     const mem_value = memory[mem_idx];
     const accum = ctx.REG.A;
-    const result = @subWithOverflow(accum, mem_value);
+
+    const result: struct{ u8, u1 } = switch (ctx.STATUS.decimal_mode) {
+        1 => bcdSubWithOverflow(@bitCast(accum), @bitCast(mem_value)),
+        0 => @subWithOverflow(accum, mem_value),
+    };
+
     const new_accum = result[0];
 
     ctx.REG.A = new_accum - @as(u8, @intCast(~ctx.STATUS.carry));
@@ -945,9 +1015,9 @@ pub fn start(rom_reader: *std.io.AnyReader) !void {
 
     // startup info
     try stdout.print(
-        \\>> rom size: {}
-        \\>> entrypoint address: {}
-        \\---
+        \\%% rom size: {}
+        \\%% entrypoint address: {}
+        \\%% -----
         \\
     , .{
         rom_memory_size,
@@ -964,7 +1034,7 @@ pub fn start(rom_reader: *std.io.AnyReader) !void {
     var input_buffer = [_]u8{ 0 } ** input_buffer_size;
     while (true) : (try stdout.writeByte('\n')) {
         // prompt
-        _ = try stdout.write("% ");
+        _ = try stdout.write(">> ");
 
         // actual received input
         const input_slice = try stdin.readUntilDelimiter(&input_buffer, '\n');

@@ -19,4 +19,8 @@ pub fn main() !void {
     };
 }
 
+test "exec_tests" {
+    _ = @import("lib/runtime.zig");
+}
+
 
